@@ -1,74 +1,68 @@
+#include <windows.h>
 #include <iostream>
 #include <fstream>
-#include <vector>
-#include <string>
-#include <algorithm>
 #include <iomanip>
-#include <windows.h>
-#include "employee.h"
 
-void FormattedOutput(std::ofstream& fout, std::string s1, std::string s2, std::string s3, std::string s4) {
-    fout << " | "  << std::left;
-    fout << std::setw(20) << s1 << " | ";
-    fout << std::setw(20) << s2 << " | ";
-    fout << std::setw(20) << s3 << " | ";
-    fout << std::right <<  std::setw(20) << s4 << " |\n";
-}
+using namespace std;
+
+struct employee {
+    int num;
+    char name[10];
+    double hours;
+};
 
 int main(int argc, char* argv[]) {
-    setlocale(LC_ALL, "RUS");
-
-    if (argc < 4) {
-        std::cerr << "Reporter: неверное число аргументов\n";
+    if (argc != 4) {
+        cerr << "Usage: Reporter <binary file> <report file> <hourly rate>" << endl;
         return 1;
     }
 
-    std::string binFileName = argv[1];
-    std::string txtFileName = argv[2];
-    double salary = 0;
+    const char* binFile = argv[1];
+    const char* reportFile = argv[2];
+    double rate = atof(argv[3]);
 
-    try {
-        salary = std::stod(argv[3]);
-    }
-    catch (std::exception e) {
-        std::cerr << "Reporter: невенрое значение зп/час\n";
+    if (rate <= 0) {
+        cerr << "Hourly rate must be positive." << endl;
         return 1;
     }
 
-    HANDLE hFile = CreateFile(binFileName.c_str(), GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (hFile == INVALID_HANDLE_VALUE) {
-        std::cerr << "Reporter: " << GetWindowsErrorText(GetLastError()) << "\n";
-        return GetLastError();
-    }
-
-    std::vector<employee> data;
-    employee emp;
-    DWORD dwBytesRead;
-
-    while (ReadFile(hFile, &emp, sizeof(employee), &dwBytesRead, NULL)) {
-        if (dwBytesRead == 0) {
-            break;
-        }
-        data.push_back(emp);
-    }
-    CloseHandle(hFile);
-
-    std::sort(data.begin(), data.end(), comparator);
-
-    std::ofstream fout(txtFileName);
-    if (!fout.is_open()) {
-        std::cerr << "Reporter: не удалось создать текстовый файл\n";
+    ifstream in(binFile, ios::binary);
+    if (!in) {
+        cerr << "Error: Cannot open binary file '" << binFile << "'" << endl;
         return 1;
     }
 
-    fout << "Отчет по файлу \"" << binFileName << "\"\n";
-    FormattedOutput(fout, "ID", "Имя", "Часы", "Зарплата");
-    
-    std::cout << data.size() << std::endl;
-    for (int i = 0; i < data.size(); i++) {
-        FormattedOutput(fout, std::to_string(data[i].num), data[i].name, std::to_string(data[i].hours), std::to_string(data[i].hours * salary));
+    ofstream out(reportFile);
+    if (!out) {
+        cerr << "Error: Cannot create report file '" << reportFile << "'" << endl;
+        return 1;
     }
 
-    fout.close();
+    out << "Report on file \"" << binFile << "\"\n";
+    out << "------------------------------------------------\n";
+    out << left << setw(15) << "Employee ID"
+        << setw(15) << "Name"
+        << setw(10) << "Hours"
+        << "Salary\n";
+    out << "------------------------------------------------\n";
+
+    employee emp{};
+    int recordCount = 0;
+    while (in.read(reinterpret_cast<char*>(&emp), sizeof(emp))) {
+        double salary = emp.hours * rate;
+        out << left << setw(15) << emp.num
+            << setw(15) << emp.name
+            << setw(10) << fixed << setprecision(2) << emp.hours
+            << fixed << setprecision(2) << salary << "\n";
+        recordCount++;
+    }
+
+    out << "------------------------------------------------\n";
+    out << "Total records: " << recordCount << "\n";
+
+    in.close();
+    out.close();
+
+    cout << "Reporter: Successfully created report with " << recordCount << " records." << endl;
     return 0;
 }

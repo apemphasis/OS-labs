@@ -1,73 +1,66 @@
-#include <iostream>
-#include <string>
 #include <windows.h>
-#include "employee.h"
+#include <iostream>
+#include <fstream>
+#include <limits>
 
-int main(int argc, char* argv[]) {
-    setlocale(LC_ALL, "RUS");
+using namespace std;
 
-    if (argc < 3) {
-        std::cerr << "Creator: неверное число аргументов\n";
+struct employee {
+    int num;
+    char name[10];
+    double hours;
+};
+
+int main(const int argc, char* argv[]) {
+    if (argc != 3) {
+        cerr << "Usage: Creator <binary file name> <number of records>" << endl;
         return 1;
     }
 
-    std::string fileName = argv[1];
-    int lines = 0;
+    const char* filename = argv[1];
+    const int recordCount = atoi(argv[2]);
 
-    try {
-        lines = std::stoi(argv[2]);
-    }
-    catch (std::exception e) {
-        std::cerr << "Creator: неверное количество записей\n";
+    if (recordCount <= 0) {
+        cerr << "Number of records must be positive." << endl;
         return 1;
     }
 
-    HANDLE hFile = CreateFile(fileName.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (hFile == INVALID_HANDLE_VALUE) {
-        std::cerr << "Creator: " << GetWindowsErrorText(GetLastError()) << "\n";
-        return GetLastError();
+    ofstream out(filename, ios::binary);
+    if (!out) {
+        cerr << "Failed to create file." << endl;
+        return 1;
     }
 
-    for (int i = 0; i < lines; i++) {
-        employee emp;
-        std::cout << "\nСотрудник [" << i + 1 << "/" << lines << "]\n";
+    for (int i = 0; i < recordCount; ++i) {
+        employee emp{};
+        cout << "\nEnter employee #" << i + 1 << ":\n";
 
-        std::cout << "ID: ";
-        try {
-            std::cin >> emp.num;
-            if (emp.num < 1) {
-                throw std::exception("ID не может быть меньше 1");
-            }
-        }
-        catch (std::exception& e) {
-            std::cerr << e.what();
-            return 1;
+        cout << "ID (integer): ";
+        while (!(cin >> emp.num)) {
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            cout << "Invalid input. Please enter an integer: ";
         }
 
-        std::cout << "Имя: ";
-        std::cin.ignore();
-        std::cin.getline(emp.name, sizeof(emp.name));
+        cout << "Name (max 9 chars): ";
+        cin >> ws;
+        cin.getline(emp.name, 10);
 
-        std::cout << "Часы: ";
-        try {
-            std::cin >> emp.hours;
-            if (emp.hours < 0) {
-                throw std::exception("Часы не могут быть меньше 0");
-            }
-        }
-        catch (std::exception& e) {
-            std::cerr << e.what();
-            return 1;
+        cout << "Hours: ";
+        while (!(cin >> emp.hours) || emp.hours < 0) {
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            cout << "Invalid input. Please enter a non-negative number: ";
         }
 
-        DWORD bytesWritten;
-        if (!WriteFile(hFile, &emp, sizeof(employee), &bytesWritten, NULL)) {
-            std::cerr << "Ошибка записи в бинарный фалй: " << GetWindowsErrorText(GetLastError()) << "\n";
-            CloseHandle(hFile);
+        out.write(reinterpret_cast<char*>(&emp), sizeof(emp));
+        if (!out) {
+            cerr << "Error writing to file." << endl;
             return 1;
         }
     }
 
-    CloseHandle(hFile);
+    out.close();
+    cout << "\nCreator: Successfully created " << recordCount << " records in " << filename << endl;
     return 0;
 }

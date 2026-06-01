@@ -1,132 +1,168 @@
-#include <iostream>
-#include <string>
-#include <vector>
-#include <fstream>
 #include <windows.h>
-#include "employee.h"
+#include <iostream>
+#include <fstream>
+#include <iomanip>
+#include <string>
+#include <limits>
 
-void RunProcessAndWait(std::string commandLine) {
-    STARTUPINFO si;      
-    PROCESS_INFORMATION pi;
-    ZeroMemory(&si, sizeof(si));
-    si.cb = sizeof(si);
-    ZeroMemory(&pi, sizeof(pi));
+using namespace std;
 
-    std::vector<char> cmdBuffer(commandLine.begin(), commandLine.end());
-    cmdBuffer.push_back('\0'); // нуль-терминатор
+struct employee {
+    int num;
+    char name[10];
+    double hours;
+};
 
-    if (!CreateProcess(NULL, cmdBuffer.data(), NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
-        throw std::runtime_error("Ошибка запуска процесса: " + GetWindowsErrorText(GetLastError()));
-    }
-    WaitForSingleObject(pi.hProcess, INFINITE);
-
-    DWORD ExitCode;
-    GetExitCodeProcess(pi.hProcess, &ExitCode);
-
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
-
-    if (ExitCode != 0) {
-        throw std::exception("Ошибка во время выполнения процесса");
-    }
+bool fileExists(const string& filename) {
+    const ifstream f(filename.c_str());
+    return f.good();
 }
 
-void PrintBinaryFile(std::string fileName) {
-    HANDLE hFile;
-    
-    hFile = CreateFile(fileName.c_str(), GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-
-    if (hFile == NULL) {
-        throw "не удалось открыть файл";
+void printBinaryFile(const string& filename) {
+    ifstream in(filename, ios::binary);
+    if (!in) {
+        cerr << "Cannot open binary file for reading." << endl;
+        return;
     }
 
-    std::cout << "\n--- Бинарный файл ---\n";
-    employee emp;
-    DWORD dwBytesRead;
+    cout << "\nBinary file contents:\n";
+    cout << "----------------------------------------\n";
+    cout << left << setw(10) << "ID" << setw(15) << "Name" << "Hours\n";
+    cout << "----------------------------------------\n";
 
-    while (ReadFile(hFile, &emp, sizeof(emp), &dwBytesRead, NULL)) {
-        if (dwBytesRead == 0) {
-            break;
-        }
-        std::cout << emp.num << " " << emp.name << " " << emp.hours << "\n";
+    employee emp{};
+    while (in.read(reinterpret_cast<char*>(&emp), sizeof(emp))) {
+        cout << left << setw(10) << emp.num
+             << setw(15) << emp.name
+             << fixed << setprecision(2) << emp.hours << "\n";
     }
-    std::cout << "---------------------\n\n";
-
-    CloseHandle(hFile);
+    cout << "----------------------------------------\n";
+    in.close();
 }
 
-void PrintTextFile(std::string fileName) {
-    std::ifstream fin(fileName);
-    if (!fin.is_open()) {
-        throw std::exception("Ошибка: не удалось открыть файл отчета");
+void printReportFile(const string& filename) {
+    ifstream report(filename);
+    if (!report) {
+        cerr << "Cannot open report file for reading." << endl;
+        return;
     }
-    std::cout << "\n--- Файл отчета ---\n";
-    std::string line;
-    while (!fin.eof()) {
-        std::getline(fin, line);
-        std::cout << line << "\n";
-    }
-    std::cout << "-------------------\n\n";
-}
 
-bool isValid(std::string str) {
-    for (int i = 0; i < size(str); i++) {
-        if (!std::isalpha(str[i])) {
-            return false;
-        }
+    cout << "\nReport contents:\n";
+    string line;
+    while (getline(report, line)) {
+        cout << line << endl;
     }
-    return true;
+    report.close();
 }
 
 int main() {
-    setlocale(LC_ALL, "RUS");
+    string binFileName;
+    int recordCount;
 
-    try {
-        std::string binName;
-        int recordsCount;
+    cout << "========================================\n";
+    cout << "Process Creation Laboratory Work\n";
+    cout << "========================================\n\n";
 
-        std::cout << "Имя бинарного файла: ";
-        std::cin >> binName;
-        if (isValid(binName)) {
-            binName += ".dat";
-        }
-        else {
-            throw std::exception("имя файла должно состоять только из латинских букв");
-        }
-        std::cout << "Количество записей: ";
-        std::cin >> recordsCount;
+    cout << "Enter binary file name: ";
+    cin >> binFileName;
 
-        std::string cmdCreator = "Creator.exe " + binName + " " + std::to_string(recordsCount);
-        std::cout << cmdCreator << std::endl;
-        RunProcessAndWait(cmdCreator);
-
-        PrintBinaryFile(binName);
-
-        std::string txtName;
-        double salary;
-
-        std::cout << "Имя файла отчета: ";
-        std::cin >> txtName;
-        if (isValid(txtName)) {
-            txtName += ".txt";
-        }
-        else {
-            throw std::exception("имя файла должно состоять только из латинских букв");
-        }
-        std::cout << "Ставка в час: ";
-        std::cin >> salary;
-
-        std::string cmdReporter = "Reporter.exe " + binName + " " + txtName + " " + std::to_string(salary);
-        
-        RunProcessAndWait(cmdReporter);
-
-        PrintTextFile(txtName);
-
-    }
-    catch (std::exception e) {
-        std::cerr << "Ошибка: " << e.what() << "\n";
+    cout << "Enter number of records: ";
+    while (!(cin >> recordCount) || recordCount <= 0) {
+        cin.clear();
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        cout << "Invalid input. Please enter a positive integer: ";
     }
 
-    std::cout << "Работа Main завершена.\n";
+    if (fileExists(binFileName)) {
+        remove(binFileName.c_str());
+    }
+
+    cout << "\nStarting Creator...\n";
+    string cmdLine = "Creator.exe \"" + binFileName + "\" " + to_string(recordCount);
+
+    STARTUPINFO si = { sizeof(si) };
+    PROCESS_INFORMATION piCreator;
+
+    char* cmdLineStr = new char[cmdLine.length() + 1];
+    strcpy(cmdLineStr, cmdLine.c_str());
+
+    if (!CreateProcess(nullptr, cmdLineStr, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &piCreator)) {
+        cerr << "Failed to start Creator. Error code: " << GetLastError() << endl;
+        delete[] cmdLineStr;
+        return 1;
+    }
+    delete[] cmdLineStr;
+
+    WaitForSingleObject(piCreator.hProcess, INFINITE);
+
+    DWORD exitCode;
+    GetExitCodeProcess(piCreator.hProcess, &exitCode);
+
+    CloseHandle(piCreator.hProcess);
+    CloseHandle(piCreator.hThread);
+
+    if (exitCode != 0) {
+        cerr << "Creator failed with exit code: " << exitCode << endl;
+        return 1;
+    }
+
+    if (!fileExists(binFileName)) {
+        cerr << "Binary file was not created." << endl;
+        return 1;
+    }
+
+    printBinaryFile(binFileName);
+
+    string reportFileName;
+    double rate;
+
+    cout << "\nEnter report file name: ";
+    cin >> reportFileName;
+
+    cout << "Enter hourly rate: ";
+    while (!(cin >> rate) || rate <= 0) {
+        cin.clear();
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        cout << "Invalid input. Please enter a positive number: ";
+    }
+
+    if (fileExists(reportFileName)) {
+        remove(reportFileName.c_str());
+    }
+
+    cout << "\nStarting Reporter...\n";
+    cmdLine = "Reporter.exe \"" + binFileName + "\" \"" + reportFileName + "\" " + to_string(rate);
+
+    cmdLineStr = new char[cmdLine.length() + 1];
+    strcpy(cmdLineStr, cmdLine.c_str());
+
+    PROCESS_INFORMATION piReporter;
+    if (!CreateProcess(nullptr, cmdLineStr, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &piReporter)) {
+        cerr << "Failed to start Reporter. Error code: " << GetLastError() << endl;
+        delete[] cmdLineStr;
+        return 1;
+    }
+    delete[] cmdLineStr;
+
+    WaitForSingleObject(piReporter.hProcess, INFINITE);
+
+    GetExitCodeProcess(piReporter.hProcess, &exitCode);
+
+    CloseHandle(piReporter.hProcess);
+    CloseHandle(piReporter.hThread);
+
+    if (exitCode != 0) {
+        cerr << "Reporter failed with exit code: " << exitCode << endl;
+        return 1;
+    }
+
+    if (!fileExists(reportFileName)) {
+        cerr << "Report file was not created." << endl;
+        return 1;
+    }
+
+    printReportFile(reportFileName);
+
+    cout << "\nProgram completed successfully.\n";
     return 0;
 }
